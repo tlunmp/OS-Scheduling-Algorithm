@@ -1,19 +1,11 @@
-#ifndef HEADERFILE_H
-#define HEADERFILE_H
 
+#define SHMKEY 9784
 
-#define MAX_USER_PROCESS 18
-#define QUANT1 2000000
-#define QUANT2 4000000
-#define QUANT3 8000000
-#define QUANT4 16000000
+#define MAX_USER_PROCESSES 18
 
-
-typedef struct Node_Object nodeObject;
-
-typedef struct NodeObject{
+typedef struct nodeObject {
 	int processId;
-	nodeObject* nextNode;
+	nodeObject* next_node;
 } NodeObject;
 
 typedef struct QueueObject {
@@ -22,40 +14,32 @@ typedef struct QueueObject {
     int timeQuantum;
 } QueueObject;
 
-typedef struct SystemClock {
-    int seconds; 
-    int nanoSeconds;
-} SystemClock;
 
-//message queue implementation
-typedef struct Message {
-    long messageAaddress;
-    int returnAddress; 
-} messages;
+typdef struct message {
+	long messageAddress;
+	int returnAddress;
+} Message;
 
+typedef struct clock {
+	int seconds;
+	int nanoSeconds;
+} Clock;
 
-typedef struct ProccessControlBlock{
-	SystemClock processStarts;
-	SystemClock processArrives;
+typedef struct proccessControlBlock{
+	Clock processStarts;
+	Clock processArrives;
 	int turnAroundTime;
 	int waitTime;
 	int priority;
-	int burst;
+	int burstTime;
+	int timeQuantum;
 	int finishedTime;
 	int cpuUsageTime;
-	int active;
 } ProcessControlBlock;
 
-
-typedef struct sharedMemoryPCB {
-    ProcessControlBlock  processControlBlock[MAX_USER_PROCESS + 1]; 
-    SystemClock clockInfo;
-} shareMemoryPCB;
-
-void test();
-void clock(SystemClock *destClock, SystemClock sourceClock, int addNanoSeconds);
-void queue(QueueObject* destObject, int proccesID);
-QueueObject* createNewQueue(int time_quantum_amt);
+typedef struct sharedObject {
+    ProcessControlBlock processControlBlock [MAX_USER_PROCESSES + 1];
+    Clock clockInfo; 
+} SharedObject;
 
 
-#endif
