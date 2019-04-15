@@ -1,65 +1,76 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <signal.h>
-#include <ctype.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/types.h>
-#include <sys/wait.h>	
-#include <semaphore.h>
-#include <sys/shm.h>
-#include <fcntl.h>
 #include "control.h"
-#include <stdio.h>
+#include <math.h>
 
 
-int queue(queueObject* destObject, int proccessID){
-    if (destObject == NULL) {
-        return -1; //invalid queue
+
+queue_object_t* create_a_new_queue(int time_quantum_amt) {
+    queue_object_t* new_queue = (queue_object_t*) malloc(sizeof(queue_object_t));
+
+    
+    if (new_queue == NULL) {
+        return NULL;
+    }
+    new_queue->time_quantum = time_quantum_amt;
+    new_queue->front = NULL;
+    new_queue->back = NULL;
+
+    return new_queue;
+}
+
+int push_enqueue(queue_object_t* destinationQueue, int processID) {
+
+    if (destinationQueue == NULL) {
+        return -1;
     }
 
-   nodeObject* newQueueNode = (nodeOBject*) malloc(sizeof(nodeObject));
+    node_object_t* new_queue_node = (node_object_t*) malloc(sizeof(node_object_t));
+    new_queue_node->process_id = processID;
+    new_queue_node->next_node = NULL;
 
-   newQueueNode->processId = processId;
-   newQueueNode->nextNode = NULL;
 
-  if(destObject->front == NULL) {
-	destObject->front = newQueueNode;
-	destObject->back = newQueueNode;
-  } else {
-
-	destinationQueue->back->next_node = new_queue_node;
+    if (destinationQueue->front == NULL) {
+        destinationQueue->front = new_queue_node;
         destinationQueue->back = new_queue_node;
-  }
+    }
+   
+    else {
+        destinationQueue->back->next_node = new_queue_node;
+        destinationQueue->back = new_queue_node;
+    }
 
-   return 0;
 
+    return 0;
 }
 
-void test(){
-	printf("hello");
-}
-void clock(SystemClock *destClock, SystemClock sourceClock, int addNanoSeconds) {
-           destinationClock->nano_seconds = sourceClock.nano_seconds + addNanoSeconds;
-           if(destinationClock->nano_seconds > 1000000000) {
-                  destinationClock->seconds++;
-                  destinationClock->nano_seconds -= 1000000000;
-            }
+int pop_dequeue(queue_object_t* sourceQueue) {
+
+    //Empty Queue Processing:
+        if(sourceQueue->front == NULL){
+               return -1; //this is an empty queue
+         }
+    
+        int processID = sourceQueue->front->process_id; 
+ 
+         //Remove Node From Queue:
+                                    node_object_t* temporary_node = sourceQueue->front;
+                                       sourceQueue->front = sourceQueue->front->next_node;
+                                           free(temporary_node);
+    
+                                                return processID; 
  }
 
-QueueObject* createNewQueue(int time_quantum_amt) {
-    QueueObject* new_queue = (*) malloc(sizeof(QueueObject));
-    	
-	//malloc failed 
-        if (new_queue == NULL) {
-                return NULL;
-           }
+void destroyQueue(queue_object_t* sourceQueue) {
 
-         new_queue->time_quantum = time_quantum_amt;
-         new_queue->front = NULL;
-         new_queue->back = NULL;
+    node_object_t* current_node = sourceQueue->front;
+    node_object_t* temporary_node;
+
+    //Free Each Of The Nodes In The Queue:
+        while (current_node != NULL) {
+               temporary_node = current_node->next_node;
+                       free(current_node);
+                                current_node = temporary_node;
+        }
     
-        return new_queue;
-   }
-   
+                                        //Free The Queue Itself:
+                                            free(sourceQueue);
+                                            }    
