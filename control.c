@@ -23,7 +23,7 @@ int push_enqueue(queue_object_t* destinationQueue, int processID) {
         return -1;
     }
 
-    node_object_t* new_queue_node = (node_object_t*) malloc(sizeof(node_object_t));
+    NodeObject* new_queue_node = (NodeObject*) malloc(sizeof(NodeObject));
     new_queue_node->process_id = processID;
     new_queue_node->next_node = NULL;
 
@@ -52,7 +52,7 @@ int pop_dequeue(queue_object_t* sourceQueue) {
         int processID = sourceQueue->front->process_id; 
  
          //Remove Node From Queue:
-                                    node_object_t* temporary_node = sourceQueue->front;
+                                    NodeObject* temporary_node = sourceQueue->front;
                                        sourceQueue->front = sourceQueue->front->next_node;
                                            free(temporary_node);
     
@@ -61,8 +61,8 @@ int pop_dequeue(queue_object_t* sourceQueue) {
 
 void destroyQueue(queue_object_t* sourceQueue) {
 
-    node_object_t* current_node = sourceQueue->front;
-    node_object_t* temporary_node;
+    NodeObject* current_node = sourceQueue->front;
+    NodeObject* temporary_node;
 
     //Free Each Of The Nodes In The Queue:
         while (current_node != NULL) {
