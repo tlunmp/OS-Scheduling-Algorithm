@@ -6,7 +6,7 @@ char outputFileName[] = "logFile.txt";
 static int timer = 10;
 static int msgid;
 static pid_t actual[MAX_USER_PROCESSES + 1];
-Clock newProcessCreateTime;
+Clock maxTimeBetweenProc;
 
 SharedMemory* shm_ptr;
 FILE* fp;
@@ -14,7 +14,7 @@ FILE* fp;
 int maxProcess = 100;
 int line = 1;
 int terminateProcessCount = 0;
-int queueLevel = 3;
+int queueLevel = 4;
 int processTable[32];
 int fakePid;
 int shmid;
@@ -27,7 +27,7 @@ unsigned int cpuIdleTime = 0;
 void helpMenu();
 int selection(void);
 void setUpPCB(int position);
-void scheduler(int fakePid);
+void userOrReal(int fakePid);
 void getInterval(Clock *destinationClock, Clock sourceClock, int addNanoSeconds);
 int getTableIndex(int array[]);
 void signalCall(int signum);
@@ -74,11 +74,13 @@ int main(int argc, char* argv[]) {
    //alarm timer
    alarm(timer);
 
+	//share the key 
     if ((shmid = shmget(SHM_KEY, sizeof(SharedMemory), IPC_CREAT | 0600)) < 0) {
         perror("Error: shmget");
         exit(errno);
     }
-    
+
+	//get message key    
     if ((msgid = msgget(MESSAGEKEY, IPC_CREAT | 0600)) < 0) {
         perror("Error: mssget");
         exit(errno);
@@ -87,8 +89,8 @@ int main(int argc, char* argv[]) {
     shm_ptr = shmat(shmid, NULL, 0);
     shm_ptr->clockInfo.seconds = 0;
     shm_ptr->clockInfo.nanoSeconds = 0;
-    newProcessCreateTime.seconds = 0;
-    newProcessCreateTime.nanoSeconds = 0;
+    maxTimeBetweenProc.seconds = 0;
+    maxTimeBetweenProc.nanoSeconds = 0;
 
     int pidSelection;
 
@@ -98,30 +100,35 @@ int main(int argc, char* argv[]) {
 
    int totalCount =0;
     while(totalCount < maxProcess) {
+    
+	//getinterval from the start random 
+        getInterval(&shm_ptr->clockInfo, shm_ptr->clockInfo, rand() % CONSTANTNUMBER + 1);
 
         if(line > LINE_MAX) {
             fclose(fp);
         }
         
-      
-        getInterval(&shm_ptr->clockInfo, shm_ptr->clockInfo, rand() % CONSTANTNUMBER + 1);
-
-        if ((shm_ptr->clockInfo.seconds > newProcessCreateTime.seconds) ||
-        (shm_ptr->clockInfo.seconds == newProcessCreateTime.seconds && shm_ptr->clockInfo.nanoSeconds > newProcessCreateTime.nanoSeconds)) {
+ 
+	//check the time to launch compare to the launch time
+        if ((shm_ptr->clockInfo.seconds > maxTimeBetweenProc.seconds) ||
+        (shm_ptr->clockInfo.seconds == maxTimeBetweenProc.seconds && shm_ptr->clockInfo.nanoSeconds > maxTimeBetweenProc.nanoSeconds)) {
 
            
                 fakePid = getTableIndex(processTable);
 
+		//fakepid is not -1 then create new process
             if (fakePid != -1) {
                 makeUserProcesses(fakePid);
-		   totalCount++;                
-         	   ++line;
-        	    SetBit(processTable, fakePid);
+		        totalCount++;
+                ++line;
+        	    
+		//set the bit then push the the queue in mulitlevel
+                SetBit(processTable, fakePid);
         	    pushEnqueue(multilevelQueue[shm_ptr->processCB[fakePid].priority], fakePid);
 
-         	   getInterval(&newProcessCreateTime, shm_ptr->clockInfo, rand() % 2000000000);
+         	   getInterval(&maxTimeBetweenProc, shm_ptr->clockInfo, rand() % CONSTANTNUMBER + 1);
 
-         	   fprintf(fp, "OSS: New process generated PID %d  at time %d:%d\n",  fakePid, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
+         	   fprintf(fp, "OSS: Generating process with PID %d  at time %d:%d\n",  fakePid, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
         	    ++line;
             }
         }
@@ -137,6 +144,7 @@ int main(int argc, char* argv[]) {
             fprintf(fp, "OSS: Dispatching process with PID %d  into queue %d at time %d:%d \n", pidSelection, shm_ptr->processCB[fakePid].priority, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
             ++line;
 
+		//return the address so master knows who got it
             recieveMessage(MASTER_PROCESS_ADDRESS);
                 shm_ptr->processCB[fakePid].process_arrives.seconds = shm_ptr->clockInfo.seconds;
                 shm_ptr->processCB[fakePid].process_arrives.nanoSeconds = shm_ptr->clockInfo.nanoSeconds;
@@ -196,11 +204,11 @@ int selection(void) {
 }
 
 
-void scheduler(int fakePid) {
+void userOrReal(int fakePid) {
     //Priority for user
     int currentPriority = shm_ptr->processCB[fakePid].priority;
 
-    //or real
+    //or real priority
     if (shm_ptr->processCB[fakePid].burst == multilevelQueue[shm_ptr->processCB[fakePid].priority]->time_quantum) {
         
         shm_ptr->processCB[fakePid].priority = (currentPriority + 1 >= 3) ? currentPriority : ++currentPriority;
@@ -218,7 +226,7 @@ void scheduler(int fakePid) {
         shm_ptr->processCB[fakePid].time_quantum = multilevelQueue[currentPriority]->time_quantum;
     }
    
-    
+    //put it in the queue 
     pushEnqueue(multilevelQueue[currentPriority], fakePid);
 
     //Output Message:
@@ -259,7 +267,7 @@ void signalCall(int signum)
     }
 
 
-    
+    //print it out the statitistics
     avgWaitTime = cpuIdleTime/terminateProcessCount;
     fprintf(stderr,"Average Wait Time = %.0f nanoSeconds per process\n", avgWaitTime);
     avgTAT = totalTAT/terminateProcessCount;
@@ -277,7 +285,7 @@ void signalCall(int signum)
       exit(EXIT_SUCCESS);
  }
 
-
+//mailing message from master to user
 void mailMessage(int destinationAddress){
     static int size_of_message;
     Message message;
@@ -286,6 +294,7 @@ void mailMessage(int destinationAddress){
     msgsnd(msgid, &message, size_of_message, 0);
 }
 
+//recieve message from the user.c if it terminates or not, or be block
 void recieveMessage(int destinationAddress){
     static int size_of_message;
     Message message;
@@ -302,15 +311,17 @@ void recieveMessage(int destinationAddress){
     getInterval(&shm_ptr->clockInfo, shm_ptr->clockInfo, shm_ptr->processCB[fakePid].burst);
     
 
-
+	//if it terminates assign and calculate the 
     if(shm_ptr->processCB[fakePid].finished == 1) {
         shm_ptr->processCB[fakePid].wait_time = ((shm_ptr->clockInfo.seconds + shm_ptr->clockInfo.nanoSeconds) - (shm_ptr->processCB[fakePid].process_starts.seconds + shm_ptr->processCB[fakePid].process_starts.nanoSeconds) - shm_ptr->processCB[fakePid].cpu_usage_time);
       cpuIdleTime += shm_ptr->processCB[fakePid].wait_time;
 
+	//get turn around time
         shm_ptr->processCB[fakePid].turn_around_time = (((shm_ptr->clockInfo.seconds * 1000000000) + shm_ptr->clockInfo.nanoSeconds) - ((shm_ptr->processCB[fakePid].process_arrives.seconds * 1000000000) + shm_ptr->processCB[fakePid].process_arrives.nanoSeconds));
         fprintf(fp, "OSS: PID %d turnaround time = %d nanoSeconds\n",fakePid, shm_ptr->processCB[fakePid].turn_around_time);
         ++line;
 
+	//get the total turn around time
         totalTAT += shm_ptr->processCB[fakePid].turn_around_time;
 
         kill(actual[fakePid], SIGINT);
@@ -319,15 +330,17 @@ void recieveMessage(int destinationAddress){
         waitpid(actual[fakePid], &status, 0);
 
         ClearBit(processTable, fakePid);
-        
+
+	//print show the termination and burst time        
         fprintf(fp, "OSS: PID %d terminated at time %d:%d\n", fakePid, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
         ++line;
         fprintf(fp, "OSS: PID %d burst time %d\n", fakePid, shm_ptr->processCB[fakePid].burst);
         ++line;
     }
 
+//if not terminated then schedule another one
     else {
-        scheduler(fakePid);
+        userOrReal(fakePid);
         
     }
 }
@@ -346,9 +359,11 @@ int getTableIndex(int array[]) {
 }
 
 
+//will make use process and fork it
 void makeUserProcesses(int position) {
         char childId[3];
 
+	//setup control block
 	setUpPCB(position);
 	pid_t childpid = fork();
 	actual[position] = childpid;
@@ -372,8 +387,8 @@ void createQueueSystem(){
 
     //Create the Multi-Level Queue System:
     int k=0;
-    for (k = 0; k < 3; k++){
-        multilevelQueue[k] = createNewQueue(TIME_QUANTUM * pow(2, k)); //not
+    for (k = 0; k < 4; k++){
+        multilevelQueue[k] = createNewQueue(TIME_QUANTUM * 2); 
     }
 
     int j = 0; 

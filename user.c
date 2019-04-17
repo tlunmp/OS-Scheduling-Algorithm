@@ -14,18 +14,21 @@ int main(int argc, char* argv[])
 {
 
     childId = atoi(argv[1]);
-	
+
+
+	//signals	
     if (signal(SIGINT, signalCallback) == SIG_ERR) {
         perror("Error: slave: signal().\n");
         exit(errno);
     }
 
+	//get the key shmget share memory
     if ((shmid = shmget(SHM_KEY, sizeof(SharedMemory), 0600)) < 0) {
         perror("Error: shmget");
         exit(errno);
     }
 
-   
+   	//get the message queue key to access
     if ((msgId = msgget(MESSAGEKEY, 0600)) < 0) {
         perror("Error: msgget");
         exit(errno);
@@ -41,16 +44,21 @@ int main(int argc, char* argv[])
     char *termMessage;
 
     while(1){
+
+	//recieve from user
         recieveMessage(childId);
         
+	//chance for termination probability
         int chance = rand() % 1000;
    
+	//if chance not terminate
         if (chance == 0) {
             shm_ptr->processCB[childId].burst = shm_ptr->processCB[childId].time_quantum;
         } else {
             shm_ptr->processCB[childId].burst = rand() % shm_ptr->processCB[childId].time_quantum;
         }
 
+	//chance is block then store the value, to burst
         int execRemaining = timeExecution - shm_ptr->processCB[childId].cpu_usage_time;
         if (shm_ptr->processCB[childId].burst > execRemaining) {
             shm_ptr->processCB[childId].burst = execRemaining;
@@ -59,17 +67,20 @@ int main(int argc, char* argv[])
 
         shm_ptr->processCB[childId].cpu_usage_time += shm_ptr->processCB[childId].burst;
         
+	//if it is terminated then set a message says terminated
         if (shm_ptr->processCB[childId].cpu_usage_time >= timeExecution) {
             shm_ptr->processCB[childId].finished = 1;
             termMessage = "terminated";
         }
 
+	//send message to the user to master if it is terminated or not
         mailMessage(MASTER_PROCESS_ADDRESS, termMessage);
     }
 
     return 0;
 }
 
+//signal call backs
 void signalCallback (int signum) {
     fprintf(stderr, "Generating Log File\n");
     //printf("\nSIGTERM received by User Process of %d\n", childId);
@@ -77,6 +88,7 @@ void signalCallback (int signum) {
     exit(0);
 }
 
+//send mail message queue
 void mailMessage(int destination_address,char *termMessage) {
     static int size_of_message;
     Message message;
@@ -86,6 +98,7 @@ void mailMessage(int destination_address,char *termMessage) {
     msgsnd(msgId, &message, size_of_message, 0);
 }
 
+//if recieve message
 void recieveMessage(int destination_address) {
     static int size_of_message;
     Message message;

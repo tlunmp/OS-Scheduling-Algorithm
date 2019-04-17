@@ -2,7 +2,7 @@
 #include <math.h>
 
 
-
+//create new queue
 QueueObject* createNewQueue(int time_quantum_amt) {
     QueueObject* new_queue = (QueueObject*) malloc(sizeof(QueueObject));
 
@@ -17,6 +17,7 @@ QueueObject* createNewQueue(int time_quantum_amt) {
     return new_queue;
 }
 
+//push the process id to the queue
 int pushEnqueue(QueueObject* destinationQueue, int processID) {
 
     if (destinationQueue == NULL) {
@@ -42,6 +43,7 @@ int pushEnqueue(QueueObject* destinationQueue, int processID) {
     return 0;
 }
 
+//pop the queue
 int pop_dequeue(QueueObject* sourceQueue) {
 
     //Empty Queue Processing:
