@@ -1,0 +1,22 @@
+Ted Anthony L Uy
+CS4760
+Project 4
+
+Scheduling round roubin on first queue and three next is multilevel queue. do a random chance if block or terminated using the user process. return and schedul round robin, round robin first queue will finish because of priority then after that mililevel queue. it goes down level every time a burst time is not done. print it in logfile
+
+SYNTAX
+-h  			help menu
+
+-o  outputfilename	inputfilename is where the filename reads and it will show error if there is no filename found on the directory. output filename 
+			should be default name is "output.dat"  where the result is generated.
+
+make			builds and creates exectuable 'p1'
+make clean		cleans object files and executables
+
+
+HOW ERROR CHECKING WORKS:
+shmt is error
+file error check is there
+
+
+NOTE: I tried to understand the instructions, even ask you about it , but it seems that I still can not understand it, I really am apologize. So instead I just tried my best to do the best I can. I do not even know if what I did was right, Since i have been doing this for a week. I dont even know why at the end it it has error in logfile.  

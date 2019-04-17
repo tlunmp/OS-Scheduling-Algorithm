@@ -3,8 +3,8 @@
 
 
 
-queue_object_t* create_a_new_queue(int time_quantum_amt) {
-    queue_object_t* new_queue = (queue_object_t*) malloc(sizeof(queue_object_t));
+QueueObject* createNewQueue(int time_quantum_amt) {
+    QueueObject* new_queue = (QueueObject*) malloc(sizeof(QueueObject));
 
     
     if (new_queue == NULL) {
@@ -17,7 +17,7 @@ queue_object_t* create_a_new_queue(int time_quantum_amt) {
     return new_queue;
 }
 
-int push_enqueue(queue_object_t* destinationQueue, int processID) {
+int pushEnqueue(QueueObject* destinationQueue, int processID) {
 
     if (destinationQueue == NULL) {
         return -1;
@@ -42,14 +42,14 @@ int push_enqueue(queue_object_t* destinationQueue, int processID) {
     return 0;
 }
 
-int pop_dequeue(queue_object_t* sourceQueue) {
+int pop_dequeue(QueueObject* sourceQueue) {
 
     //Empty Queue Processing:
         if(sourceQueue->front == NULL){
                return -1; //this is an empty queue
          }
     
-        int processID = sourceQueue->front->process_id; 
+        int processID = sourceQueue->front->process_id;
  
          //Remove Node From Queue:
                                     NodeObject* temporary_node = sourceQueue->front;
@@ -59,18 +59,19 @@ int pop_dequeue(queue_object_t* sourceQueue) {
                                                 return processID; 
  }
 
-void destroyQueue(queue_object_t* sourceQueue) {
+void destroyQueue(QueueObject* sourceQueue) {
 
     NodeObject* current_node = sourceQueue->front;
     NodeObject* temporary_node;
 
     //Free Each Of The Nodes In The Queue:
-        while (current_node != NULL) {
-               temporary_node = current_node->next_node;
-                       free(current_node);
-                                current_node = temporary_node;
-        }
+    while (current_node != NULL) {
+        temporary_node = current_node->next_node;
+        free(current_node);
+        current_node = temporary_node;
+    
+    }
     
                                         //Free The Queue Itself:
-                                            free(sourceQueue);
-                                            }    
+    free(sourceQueue);
+}

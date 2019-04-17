@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -Wall 
+CFLAGS = 
 LDFLAGS = -pthread -lm 
 TARGET = oss
 TARGET1 = user 

@@ -1,31 +1,30 @@
 #include "control.h"
 #include <math.h>
-#define SetBit(A,k)     ( A[((k-1)/32)] |= (1 << ((k-1)%32)) ) 
-#define ClearBit(A,k)   ( A[((k-1)/32)] &= ~(1 << ((k-1)%32)) ) 
-#define TestBit(A,k)    ( A[((k-1)/32)] & (1 << ((k-1)%32)) )
 
 
-static char* fileName = "logfile.txt";
-static int max = 10;
+char outputFileName[] = "logFile.txt";
+static int timer = 10;
 static int msgid;
-int processTable[32];
-int fakePid;
-int shmid;
-
 static pid_t actual[MAX_USER_PROCESSES + 1];
 Clock newProcessCreateTime;
 
-shared_memory_object_t* shm_ptr;
+SharedMemory* shm_ptr;
 FILE* fp;
 
 int maxProcess = 100;
 int line = 1;
 int terminateProcessCount = 0;
+int queueLevel = 3;
+int processTable[32];
+int fakePid;
+int shmid;
+
 double avgTAT = 0.00;
 unsigned long long totalTAT = 0;
 double avgWaitTime = 0.00;
-unsigned int cpu_idle_itme = 0;
+unsigned int cpuIdleTime = 0;
 
+void helpMenu();
 int selection(void);
 void setUpPCB(int position);
 void scheduler(int fakePid);
@@ -38,6 +37,29 @@ void makeUserProcesses(int position);
 void createQueueSystem();
 
 int main(int argc, char* argv[]) {
+	int c;
+	//getopt command for command line
+	while((c = getopt (argc,argv, "ho:")) != -1) {
+
+		switch(c) {
+			case 'h':
+				helpMenu();
+				return 1;
+			case 'o':
+				strcpy(outputFileName, optarg);
+				break;
+			default:
+				fprintf(stderr, "%s: Error: Unknown option -%c\n",argv[0],optopt);
+				return -1;	
+		}
+
+
+	}
+
+
+
+
+
     //generate SIGINT via Ctrl+c
     if (signal(SIGINT, signalCall) == SIG_ERR) {
         perror("Error: master: signal(): SIGINT\n");
@@ -49,29 +71,30 @@ int main(int argc, char* argv[]) {
         exit(errno);
     }
 
-    alarm(max);
+   //alarm timer
+   alarm(timer);
 
-    if ((shmid = shmget(SHM_KEY, sizeof(shared_memory_object_t), IPC_CREAT | 0600)) < 0) {
+    if ((shmid = shmget(SHM_KEY, sizeof(SharedMemory), IPC_CREAT | 0600)) < 0) {
         perror("Error: shmget");
         exit(errno);
     }
     
-    if ((msgid = msgget(MESSAGE_QUEUE_KEY, IPC_CREAT | 0600)) < 0) {
+    if ((msgid = msgget(MESSAGEKEY, IPC_CREAT | 0600)) < 0) {
         perror("Error: mssget");
         exit(errno);
     }
     
     shm_ptr = shmat(shmid, NULL, 0);
-    shm_ptr->clock_info.seconds = 0;
-    shm_ptr->clock_info.nanoSeconds = 0;
+    shm_ptr->clockInfo.seconds = 0;
+    shm_ptr->clockInfo.nanoSeconds = 0;
     newProcessCreateTime.seconds = 0;
     newProcessCreateTime.nanoSeconds = 0;
 
-    int proxyRide;
+    int pidSelection;
 
     createQueueSystem();
 
-    fp = fopen(fileName, "w");
+    fp = fopen(outputFileName, "w");
 
    int totalCount =0;
     while(totalCount < maxProcess) {
@@ -81,51 +104,54 @@ int main(int argc, char* argv[]) {
         }
         
       
-        getInterval(&shm_ptr->clock_info, shm_ptr->clock_info, rand() % CONTEXT_SWITCH_TIME + 1);
+        getInterval(&shm_ptr->clockInfo, shm_ptr->clockInfo, rand() % CONSTANTNUMBER + 1);
 
-        if ((shm_ptr->clock_info.seconds > newProcessCreateTime.seconds) || 
-        (shm_ptr->clock_info.seconds == newProcessCreateTime.seconds && shm_ptr->clock_info.nanoSeconds > newProcessCreateTime.nanoSeconds)) {
+        if ((shm_ptr->clockInfo.seconds > newProcessCreateTime.seconds) ||
+        (shm_ptr->clockInfo.seconds == newProcessCreateTime.seconds && shm_ptr->clockInfo.nanoSeconds > newProcessCreateTime.nanoSeconds)) {
 
            
                 fakePid = getTableIndex(processTable);
-                printf("\nprocess_table_reservation = %d\n", fakePid);
 
             if (fakePid != -1) {
                 makeUserProcesses(fakePid);
 		   totalCount++;                
          	   ++line;
         	    SetBit(processTable, fakePid);
-        	    push_enqueue(multilevelQueue[shm_ptr->process_control_block[fakePid].priority], fakePid);
+        	    pushEnqueue(multilevelQueue[shm_ptr->processCB[fakePid].priority], fakePid);
 
-         	   getInterval(&newProcessCreateTime, shm_ptr->clock_info, rand() % 2000000000);
+         	   getInterval(&newProcessCreateTime, shm_ptr->clockInfo, rand() % 2000000000);
 
-         	   fprintf(fp, "OSS: New process generated PID %d  at time %d:%d\n",  fakePid, shm_ptr->clock_info.seconds, shm_ptr->clock_info.nanoSeconds);
+         	   fprintf(fp, "OSS: New process generated PID %d  at time %d:%d\n",  fakePid, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
         	    ++line;
             }
         }
 
-        proxyRide = selection();
-        if(proxyRide != -1){
+        //get the queue selection
+        pidSelection = selection();
     
-            mailMessage(proxyRide);
-            fprintf(fp, "OSS: Dispatching process with PID %d  into queue %d at time %d:%d \n", proxyRide, shm_ptr->process_control_block[fakePid].priority, shm_ptr->clock_info.seconds, shm_ptr->clock_info.nanoSeconds);
+        //if its empty
+        if(pidSelection != -1){
+    
+            //send message
+            mailMessage(pidSelection);
+            fprintf(fp, "OSS: Dispatching process with PID %d  into queue %d at time %d:%d \n", pidSelection, shm_ptr->processCB[fakePid].priority, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
             ++line;
 
             recieveMessage(MASTER_PROCESS_ADDRESS);
-                shm_ptr->process_control_block[fakePid].process_arrives.seconds = shm_ptr->clock_info.seconds;
-                shm_ptr->process_control_block[fakePid].process_arrives.nanoSeconds = shm_ptr->clock_info.nanoSeconds;
+                shm_ptr->processCB[fakePid].process_arrives.seconds = shm_ptr->clockInfo.seconds;
+                shm_ptr->processCB[fakePid].process_arrives.nanoSeconds = shm_ptr->clockInfo.nanoSeconds;
             }
         }
 
 
-    avgWaitTime = cpu_idle_itme/terminateProcessCount;
-    printf("\navg_wait_time = %.0f nanoSeconds per process\n", avgWaitTime);
+    //end show the information
+    avgWaitTime = cpuIdleTime/terminateProcessCount;
+    fprintf(stderr,"Average Wait Time = %.0f nanoSeconds per process\n", avgWaitTime);
     avgTAT = totalTAT/terminateProcessCount;
-    printf("\navg_turn_around_time = %.0f nanoSeconds per process\n", avgTAT);
-    printf("\nCPU_Idle_Time = %u nanoSeconds\n", cpu_idle_itme);
+    fprintf(stderr,"Average Turn Around Time = %.0f nanoSeconds per process\n", avgTAT);
+    fprintf(stderr,"CPU Idle Time = %u nanoSeconds\n", cpuIdleTime);
     msgctl(msgid, IPC_RMID, NULL);
-    printf("master done\n");
-    printf("\nline count = %d\n", line);
+    fprintf(stderr,"\nline count = %d\n", line);
      shmdt(shm_ptr); //detaches a section of shared memory
     shmctl(shmid, IPC_RMID, NULL);  // deallocate the memory
    fclose(fp);
@@ -133,71 +159,75 @@ int main(int argc, char* argv[]) {
     return 0; 
 }
 
+
+//setup the process control table to record stats of the burst time
 void setUpPCB(int position){
-	 shm_ptr->process_control_block[position].priority = 0;
-        shm_ptr->process_control_block[position].cpu_usage_time = 0;
-        shm_ptr->process_control_block[position].burst = 0;
-        shm_ptr->process_control_block[position].time_quantum = multilevelQueue[shm_ptr->process_control_block[position].priority]->time_quantum;
-        shm_ptr->process_control_block[position].finished = 0;
-        shm_ptr->process_control_block[position].process_starts.seconds = shm_ptr->clock_info.seconds;
-        shm_ptr->process_control_block[position].process_starts.nanoSeconds = shm_ptr->clock_info.nanoSeconds;
-        shm_ptr->process_control_block[position].process_arrives.seconds = 0;
-        shm_ptr->process_control_block[position].process_arrives.nanoSeconds = 0;
+	 shm_ptr->processCB[position].priority = 0;
+        shm_ptr->processCB[position].cpu_usage_time = 0;
+        shm_ptr->processCB[position].burst = 0;
+        shm_ptr->processCB[position].time_quantum = multilevelQueue[shm_ptr->processCB[position].priority]->time_quantum;
+        shm_ptr->processCB[position].finished = 0;
+        shm_ptr->processCB[position].process_starts.seconds = shm_ptr->clockInfo.seconds;
+        shm_ptr->processCB[position].process_starts.nanoSeconds = shm_ptr->clockInfo.nanoSeconds;
+        shm_ptr->processCB[position].process_arrives.seconds = 0;
+        shm_ptr->processCB[position].process_arrives.nanoSeconds = 0;
     
 }
 
 
-//int i; 
+//slectint the process
 int selection(void) {
     int i; 
-    int selected_process;
+    int selectedProcess;
 
-    for(i = 0; i < 3; ++i) {
-        selected_process = pop_dequeue(multilevelQueue[i]);
+  
+    for(i = 0; i < queueLevel; ++i) {
+        selectedProcess = pop_dequeue(multilevelQueue[i]);
 
-         if (selected_process == -1) {
+         if (selectedProcess == -1) {
             continue;
         }
 
-        return selected_process;
+        return selectedProcess;
     }
-    
-    //Report Back a -1 If There Are No Processes In Any Queues; ALL QUEUES ARE EMPTY
+   
+	//if theres no queue 
     return -1;
 }
 
 
 void scheduler(int fakePid) {
-    //Priority for user at fakePid
-    int currentPriority = shm_ptr->process_control_block[fakePid].priority;
+    //Priority for user
+    int currentPriority = shm_ptr->processCB[fakePid].priority;
 
-    // CPU BOUND PROCESS:
-    if (shm_ptr->process_control_block[fakePid].burst == multilevelQueue[shm_ptr->process_control_block[fakePid].priority]->time_quantum) {
+    //or real
+    if (shm_ptr->processCB[fakePid].burst == multilevelQueue[shm_ptr->processCB[fakePid].priority]->time_quantum) {
         
-        shm_ptr->process_control_block[fakePid].priority = (currentPriority + 1 >= 3) ? currentPriority : ++currentPriority;
-        shm_ptr->process_control_block[fakePid].time_quantum = multilevelQueue[currentPriority]->time_quantum;
+        shm_ptr->processCB[fakePid].priority = (currentPriority + 1 >= 3) ? currentPriority : ++currentPriority;
+        shm_ptr->processCB[fakePid].time_quantum = multilevelQueue[currentPriority]->time_quantum;
     }
 
     
     else {
     
-        fprintf(fp, "%OSS: PID %d not using entire time quantum\n", fakePid);
+        fprintf(fp, "OSS: PID %d not using entire time quantum\n", fakePid);
         ++line;
 
         currentPriority = 0;
-        shm_ptr->process_control_block[fakePid].priority = currentPriority;
-        shm_ptr->process_control_block[fakePid].time_quantum = multilevelQueue[currentPriority]->time_quantum;
+        shm_ptr->processCB[fakePid].priority = currentPriority;
+        shm_ptr->processCB[fakePid].time_quantum = multilevelQueue[currentPriority]->time_quantum;
     }
    
     
-    push_enqueue(multilevelQueue[currentPriority], fakePid);
+    pushEnqueue(multilevelQueue[currentPriority], fakePid);
 
     //Output Message:
-    fprintf(fp, "%OSS: Putting process with PID %d into queue %d\n",fakePid, currentPriority);
+    fprintf(fp, "OSS: Putting process with PID %d into queue %d\n",fakePid, currentPriority);
     ++line;
 }
 
 
+//incrementing the clock
 void getInterval(Clock *destinationClock, Clock sourceClock, int addNanoSeconds) {
     destinationClock->nanoSeconds = sourceClock.nanoSeconds + addNanoSeconds;
     if(destinationClock->nanoSeconds > 1000000000) {
@@ -228,15 +258,15 @@ void signalCall(int signum)
                 printf("User process was stopped by signal %d\n", WIFSTOPPED(status));
     }
 
-    
-    avgWaitTime = cpu_idle_itme/terminateProcessCount;
 
-    printf("\navg_wait_time = %.0f nanoSeconds per process\n", avgWaitTime);
+    
+    avgWaitTime = cpuIdleTime/terminateProcessCount;
+    fprintf(stderr,"Average Wait Time = %.0f nanoSeconds per process\n", avgWaitTime);
     avgTAT = totalTAT/terminateProcessCount;
-    printf("\navg_turn_around_time = %.0f nanoSeconds per process\n", avgTAT);
-    printf("\nCPU_Idle_Time = %u nanoSeconds\n", cpu_idle_itme);
+    fprintf(stderr,"Average Turn Around Time = %.0f nanoSeconds per process\n", avgTAT);
+    fprintf(stderr,"CPU Idle Time = %u nanoSeconds\n", cpuIdleTime);
     msgctl(msgid, IPC_RMID, NULL);
-    printf("\nline count = %d\n", line);
+    fprintf(stderr,"\nline count = %d\n", line);
  
    kill(0, SIGTERM);
    //clean up program before exit (via interrupt signal)
@@ -250,38 +280,38 @@ void signalCall(int signum)
 
 void mailMessage(int destinationAddress){
     static int size_of_message;
-    message_t message;
-    message.message_address = destinationAddress;
-    size_of_message = sizeof(message) - sizeof(message.message_address);
+    Message message;
+    message.messageAddress = destinationAddress;
+    size_of_message = sizeof(message) - sizeof(message.messageAddress);
     msgsnd(msgid, &message, size_of_message, 0);
 }
 
 void recieveMessage(int destinationAddress){
     static int size_of_message;
-    message_t message;
+    Message message;
     size_of_message = sizeof(message) - sizeof(long);
     msgrcv(msgid, &message, size_of_message, destinationAddress, 0);
 
-    int fakePid = message.return_address;
+    int fakePid = message.returnAddress;
 
-    printf("\nid=%d\n", message.return_address);
-    fprintf(fp, "\nOSS: Receiving that process with PID %d ran for %d nanoseconds\n", fakePid,shm_ptr->clock_info.nanoSeconds);
+   
+    fprintf(fp, "OSS: Receiving that process with PID %d ran for %d nanoseconds\n", fakePid,shm_ptr->clockInfo.nanoSeconds);
     ++line;
 
     int status;
-    getInterval(&shm_ptr->clock_info, shm_ptr->clock_info, shm_ptr->process_control_block[fakePid].burst);
+    getInterval(&shm_ptr->clockInfo, shm_ptr->clockInfo, shm_ptr->processCB[fakePid].burst);
     
 
 
-    if(shm_ptr->process_control_block[fakePid].finished == 1) {
-        shm_ptr->process_control_block[fakePid].wait_time = ((shm_ptr->clock_info.seconds + shm_ptr->clock_info.nanoSeconds) - (shm_ptr->process_control_block[fakePid].process_starts.seconds + shm_ptr->process_control_block[fakePid].process_starts.nanoSeconds) - shm_ptr->process_control_block[fakePid].cpu_usage_time);
-      cpu_idle_itme += shm_ptr->process_control_block[fakePid].wait_time;
+    if(shm_ptr->processCB[fakePid].finished == 1) {
+        shm_ptr->processCB[fakePid].wait_time = ((shm_ptr->clockInfo.seconds + shm_ptr->clockInfo.nanoSeconds) - (shm_ptr->processCB[fakePid].process_starts.seconds + shm_ptr->processCB[fakePid].process_starts.nanoSeconds) - shm_ptr->processCB[fakePid].cpu_usage_time);
+      cpuIdleTime += shm_ptr->processCB[fakePid].wait_time;
 
-        shm_ptr->process_control_block[fakePid].turn_around_time = (((shm_ptr->clock_info.seconds * 1000000000) + shm_ptr->clock_info.nanoSeconds) - ((shm_ptr->process_control_block[fakePid].process_arrives.seconds * 1000000000) + shm_ptr->process_control_block[fakePid].process_arrives.nanoSeconds));
-        fprintf(fp, "\n%OSS: PID %d turnaround time = %d nanoSeconds\n",fakePid, shm_ptr->process_control_block[fakePid].turn_around_time);
+        shm_ptr->processCB[fakePid].turn_around_time = (((shm_ptr->clockInfo.seconds * 1000000000) + shm_ptr->clockInfo.nanoSeconds) - ((shm_ptr->processCB[fakePid].process_arrives.seconds * 1000000000) + shm_ptr->processCB[fakePid].process_arrives.nanoSeconds));
+        fprintf(fp, "OSS: PID %d turnaround time = %d nanoSeconds\n",fakePid, shm_ptr->processCB[fakePid].turn_around_time);
         ++line;
 
-        totalTAT += shm_ptr->process_control_block[fakePid].turn_around_time;
+        totalTAT += shm_ptr->processCB[fakePid].turn_around_time;
 
         kill(actual[fakePid], SIGINT);
         ++terminateProcessCount;
@@ -290,9 +320,9 @@ void recieveMessage(int destinationAddress){
 
         ClearBit(processTable, fakePid);
         
-        fprintf(fp, "OSS: PID %d terminated at time %d:%d\n", fakePid, shm_ptr->clock_info.seconds, shm_ptr->clock_info.nanoSeconds);
+        fprintf(fp, "OSS: PID %d terminated at time %d:%d\n", fakePid, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
         ++line;
-        fprintf(fp, "%OSS: PID %d burst time %d\n", fakePid, shm_ptr->process_control_block[fakePid].burst);
+        fprintf(fp, "OSS: PID %d burst time %d\n", fakePid, shm_ptr->processCB[fakePid].burst);
         ++line;
     }
 
@@ -308,10 +338,8 @@ int getTableIndex(int array[]) {
    int i;
     for (i = 1; i <= MAX_USER_PROCESSES; i++) {
         if(!TestBit(array, i)) {
-            printf("\ni = %d\n", i);
             return i;
         }
-        printf("**PROCESS_TABLE_FULL**\n");
         return -1;
         
     }
@@ -319,21 +347,23 @@ int getTableIndex(int array[]) {
 
 
 void makeUserProcesses(int position) {
-        char child_id[3];
+        char childId[3];
 
 	setUpPCB(position);
-	actual[position] = fork();
+	pid_t childpid = fork();
+	actual[position] = childpid;
 
-        if (actual[position] < 0) {
+        if (childpid < 0) {
             //fork failed
             perror("Fork failed");
             exit(errno);
         }
-        else if (actual[position] == 0) {
-            sprintf(child_id, "%d", position);
-            execl("./user", "user", child_id, NULL);
-            perror("User failed to execl child exe");
-            printf("THIS SHOULD NEVER EXECUTE\n");
+
+        else if (childpid == 0) {
+            sprintf(childId, "%d", position);
+            execl("./user", "user", childId, NULL);
+            perror("Error");
+        
         }
 
     }
@@ -343,7 +373,7 @@ void createQueueSystem(){
     //Create the Multi-Level Queue System:
     int k=0;
     for (k = 0; k < 3; k++){
-        multilevelQueue[k] = create_a_new_queue(TIME_QUANT_QUEUE_0 * pow(2, k)); //not
+        multilevelQueue[k] = createNewQueue(TIME_QUANTUM * pow(2, k)); //not
     }
 
     int j = 0; 
@@ -354,3 +384,11 @@ void createQueueSystem(){
 
 
 }
+//help menu
+void helpMenu() {
+		printf("---------------------------------------------------------------| Help Menu |--------------------------------------------------------------------------\n");
+		printf("-h help menu\n"); 
+		printf("-o inputfilename                      | ouputfilename of the log file\n"); 
+		printf("------------------------------------------------------------------------------------------------------------------------------------------------------\n");
+}
+
