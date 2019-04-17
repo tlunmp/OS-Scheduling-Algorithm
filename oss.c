@@ -1,5 +1,4 @@
 #include "control.h"
-#include <math.h>
 
 
 char outputFileName[] = "logFile.txt";
@@ -125,7 +124,9 @@ int main(int argc, char* argv[]) {
 		//set the bit then push the the queue in mulitlevel
                 SetBit(processTable, fakePid);
         	    pushEnqueue(multilevelQueue[shm_ptr->processCB[fakePid].priority], fakePid);
+			
 
+		//increase interval for new process to generate
          	   getInterval(&maxTimeBetweenProc, shm_ptr->clockInfo, rand() % CONSTANTNUMBER + 1);
 
          	   fprintf(fp, "OSS: Generating process with PID %d  at time %d:%d\n",  fakePid, shm_ptr->clockInfo.seconds, shm_ptr->clockInfo.nanoSeconds);
@@ -145,7 +146,7 @@ int main(int argc, char* argv[]) {
             ++line;
 
 		//return the address so master knows who got it
-            recieveMessage(MASTER_PROCESS_ADDRESS);
+            recieveMessage(ADDRESS);
                 shm_ptr->processCB[fakePid].process_arrives.seconds = shm_ptr->clockInfo.seconds;
                 shm_ptr->processCB[fakePid].process_arrives.nanoSeconds = shm_ptr->clockInfo.nanoSeconds;
             }
@@ -221,6 +222,7 @@ void userOrReal(int fakePid) {
         fprintf(fp, "OSS: PID %d not using entire time quantum\n", fakePid);
         ++line;
 
+	//set priority to 0
         currentPriority = 0;
         shm_ptr->processCB[fakePid].priority = currentPriority;
         shm_ptr->processCB[fakePid].time_quantum = multilevelQueue[currentPriority]->time_quantum;

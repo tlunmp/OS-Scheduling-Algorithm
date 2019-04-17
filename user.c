@@ -74,7 +74,7 @@ int main(int argc, char* argv[])
         }
 
 	//send message to the user to master if it is terminated or not
-        mailMessage(MASTER_PROCESS_ADDRESS, termMessage);
+        mailMessage(ADDRESS, termMessage);
     }
 
     return 0;

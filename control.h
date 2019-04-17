@@ -9,7 +9,7 @@
 #include <string.h>
 #include <math.h>
 
-#define MASTER_PROCESS_ADDRESS 999
+#define ADDRESS 900
 #define SetBit(A,k)     ( A[((k-1)/32)] |= (1 << ((k-1)%32)) )
 #define ClearBit(A,k)   ( A[((k-1)/32)] &= ~(1 << ((k-1)%32)) )
 #define TestBit(A,k)    ( A[((k-1)/32)] & (1 << ((k-1)%32)) )
